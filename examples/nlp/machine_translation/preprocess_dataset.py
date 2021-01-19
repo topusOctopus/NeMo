@@ -92,7 +92,3 @@ if __name__ == '__main__':
         pickle.dump(dataset, open(os.path.join(args.out_dir, 'batches.tokens.%d.pkl' % (num_tokens)), 'wb'))
         end = time.time()
         print('Took %f time to pickle' % (end - start))
-        start = time.time()
-        dataset = pickle.load(open(os.path.join(args.out_dir, 'batches.tokens.%d.pkl' % (num_tokens)), 'rb'))
-        end = time.time()
-        print('Took %f time to unpickle' % (end - start))
