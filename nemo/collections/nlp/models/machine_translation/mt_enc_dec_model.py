@@ -13,9 +13,12 @@
 # limitations under the License.
 
 import itertools
+import os
 import pickle
 import random
 from pathlib import Path
+import tarfile
+import tempfile
 from typing import Dict, List, Optional
 
 import numpy as np
@@ -27,6 +30,7 @@ from pytorch_lightning import Trainer
 from pytorch_lightning.utilities import rank_zero_only
 from sacrebleu import corpus_bleu
 from sacremoses import MosesDetokenizer, MosesPunctNormalizer, MosesTokenizer
+import youtokentome as yttm
 
 from nemo.collections.common.losses import SmoothedCrossEntropyLoss
 from nemo.collections.common.metrics import GlobalAverageLossMetric
@@ -37,8 +41,10 @@ from nemo.collections.nlp.models.machine_translation.mt_enc_dec_config import MT
 from nemo.collections.nlp.modules.common import TokenClassifier
 from nemo.collections.nlp.modules.common.transformer import BeamSearchSequenceGenerator
 from nemo.collections.nlp.modules.common.transformer.transformer import TransformerDecoderNM, TransformerEncoderNM
+from nemo.collections.nlp.modules.common.tokenizer_utils import get_tokenizer
 from nemo.core.classes.common import typecheck
 from nemo.utils import logging, model_utils
+
 
 __all__ = ['MTEncDecModel']
 
@@ -61,6 +67,8 @@ class MTEncDecModel(EncDecNLPModel):
         self.setup_enc_dec_tokenizers(cfg)
 
         super().__init__(cfg=cfg, trainer=trainer)
+
+        self.preprocess_data()
 
         # TODO: use get_encoder function with support for HF and Megatron
         self.encoder = TransformerEncoderNM(
@@ -368,3 +376,177 @@ class MTEncDecModel(EncDecNLPModel):
     @classmethod
     def list_available_models(cls) -> Optional[Dict[str, str]]:
         pass
+
+
+def prepare_tokenizer(self, out_dir, src_fname, tgt_fname, vocab_size, shared_tokenizer, tokenizer_name, bpe_dropout):
+    # trains tokenizers if needed and
+    # returns encoder_tokenizer, decoder_tokenizer
+    if not os.path.exists(out_dir):
+        os.mkdir(out_dir)
+    if shared_tokenizer:
+        os.system('cat %s %s > %s' % (src_fname, tgt_fname, '/tmp/concat_dataset.txt'))
+        yttm.BPE.train(
+            data='/tmp/concat_dataset.txt',
+            vocab_size=vocab_size,
+            model=os.path.join(out_dir, 'tokenizer.%d.BPE.model' % (vocab_size)),
+        )
+        encoder_tokenizer_model = os.path.join(out_dir, 'tokenizer.%d.BPE.model' % (vocab_size))
+        decoder_tokenizer_model = os.path.join(out_dir, 'tokenizer.%d.BPE.model' % (vocab_size))
+        os.remove('/tmp/concat_dataset.txt')
+    else:
+        yttm.BPE.train(
+            data=src_fname,
+            vocab_size=vocab_size,
+            model=os.path.join(out_dir, 'tokenizer.encoder.%d.BPE.model' % vocab_size)),
+        )
+
+        yttm.BPE.train(
+            data=tgt_fname,
+            vocab_size=vocab_size,
+            model=os.path.join(out_dir, 'tokenizer.decoder.%d.BPE.model' % (vocab_size)),
+        )
+        encoder_tokenizer_model = os.path.join(out_dir, 'tokenizer.encoder.%d.BPE.model' % (vocab_size))
+        decoder_tokenizer_model = os.path.join(out_dir, 'tokenizer.decoder.%d.BPE.model' % (vocab_size))
+
+    encoder_tokenizer = get_tokenizer(
+        tokenizer_name='yttm', tokenizer_model=encoder_tokenizer_model, bpe_dropout=bpe_dropout
+    )
+
+    decoder_tokenizer = get_tokenizer(
+        tokenizer_name='yttm', tokenizer_model=decoder_tokenizer_model, bpe_dropout=bpe_dropout
+    )
+
+    return encoder_tokenizer, decoder_tokenizer
+
+
+def preprocess_data(
+    self,
+    shared_tokenizer,
+    clean,
+    bpe_dropout,
+    src_fname,
+    tgt_fname,
+    out_dir,
+    encoder_tokenizer,
+    decoder_tokenizer,
+    vocab_size,
+    max_seq_length,
+    min_seq_length,
+    tokens_in_batch,
+    lines_per_dataset_fragment,
+    num_batches_per_tarfile,
+):
+    tar_file_ctr = 1
+    num_files_in_tar = 0
+    num_lines = 0
+    shard_num = 0
+    global_batch_ctr = 0
+    tmp_f_src = tempfile.NamedTemporaryFile(delete=False, mode='w')
+    tmp_f_tgt = tempfile.NamedTemporaryFile(delete=False, mode='w')
+    tar_file_ptr = tarfile.open(os.path.join(out_dir, 'batches.tokens.%d.%d.tar' % (tokens_in_batch, 1)), 'w')
+    with open(src_fname, 'r') as f_src, open(tgt_fname) as f_tgt:
+        for src_line, tgt_line in zip(f_src, f_tgt):
+            tmp_f_src.write(src_line)
+            tmp_f_tgt.write(tgt_line)
+            num_lines += 1
+
+            if num_lines == lines_per_dataset_fragment:
+                tmp_f_src.close()
+                tmp_f_tgt.close()
+                tar_file_ptr, global_batch_ctr, num_files_in_tar, tar_file_ctr = self.write_batches_to_tarfiles(
+                    src_fname=tmp_f_src.name,
+                    tgt_fname=tmp_f_tgt.name,
+                    num_tokens=tokens_in_batch,
+                    encoder_tokenizer=encoder_tokenizer,
+                    decoder_tokenizer=decoder_tokenizer,
+                    num_files_in_tar=num_files_in_tar,
+                    tar_file_ptr=tar_file_ptr,
+                    tar_file_ctr=tar_file_ctr,
+                    global_batch_ctr=global_batch_ctr,
+                )
+
+                num_lines = 0
+                shard_num += 1
+
+                os.remove(tmp_f_src.name)
+                os.remove(tmp_f_tgt.name)
+
+                tmp_f_src = tempfile.NamedTemporaryFile(delete=False, mode='w')
+                tmp_f_tgt = tempfile.NamedTemporaryFile(delete=False, mode='w')
+
+    tmp_f_src.close()
+    tmp_f_tgt.close()
+    tar_file_ptr, global_batch_ctr, num_files_in_tar, tar_file_ctr = write_batches_to_tarfiles(
+        args,
+        tmp_f_src.name,
+        tmp_f_tgt.name,
+        tokens_in_batch,
+        encoder_tokenizer,
+        decoder_tokenizer,
+        num_files_in_tar=num_files_in_tar,
+        tar_file_ptr=tar_file_ptr,
+        tar_file_ctr=tar_file_ctr,
+        global_batch_ctr=global_batch_ctr,
+    )
+    tar_file_ptr.close()
+    os.remove(tmp_f_src.name)
+    os.remove(tmp_f_tgt.name)
+
+    if num_files_in_tar != args.num_batches_per_tarfile:
+        os.remove(os.path.join(args.out_dir, 'batches.tokens.%d.%d.tar' % (tokens_in_batch, tar_file_ctr)))
+        global_batch_ctr -= num_files_in_tar
+        print('Dropping %d batches because of overflow' % (num_files_in_tar))
+
+    json.dump({'num_batches': global_batch_ctr}, open(os.path.join(args.out_dir, 'metadata.json'), 'w'))
+
+
+def write_batches_to_tarfiles(
+    self,
+    src_fname,
+    tgt_fname,
+    num_tokens,
+    encoder_tokenizer,
+    decoder_tokenizer,
+    num_files_in_tar,
+    tar_file_ptr,
+    tar_file_ctr,
+    global_batch_ctr,
+):
+    """
+    Writes current fragment of the overall parallel corpus to tarfiles by:
+    (1) Creating a minibatches using a TranslationDataset object.
+    (2) Writing each minibatch to a pickle file.
+    (3) Adding pickle files to a tarfile until it reaches args.num_batches_per_tarfile.
+    """
+
+    dataset = TranslationDataset(
+        dataset_src=src_fname,
+        dataset_tgt=tgt_fname,
+        tokens_in_batch=num_tokens,
+        clean=args.clean,
+        max_seq_length=args.max_seq_length,
+        min_seq_length=args.min_seq_length,
+        max_seq_length_diff=args.max_seq_length,
+        max_seq_length_ratio=args.max_seq_length,
+        cache_ids=False,
+        cache_data_per_node=False,
+        use_cache=False,
+    )
+    dataset.batchify(encoder_tokenizer, decoder_tokenizer)
+
+    for _, batch in dataset.batches.items():
+        global_batch_ctr += 1
+        pickle.dump(batch, open(os.path.join(args.out_dir, 'batch-%d.pkl' % (global_batch_ctr)), 'wb'))
+
+        if num_files_in_tar == args.num_batches_per_tarfile:
+            tar_file_ctr += 1
+            tar_file_ptr.close()
+            tar_file_ptr = tarfile.open(
+                os.path.join(args.out_dir, 'batches.tokens.%d.%d.tar' % (num_tokens, tar_file_ctr)), 'w'
+            )
+            num_files_in_tar = 0
+
+        tar_file_ptr.add(os.path.join(args.out_dir, 'batch-%d.pkl' % (global_batch_ctr)))
+        num_files_in_tar += 1
+        os.remove(os.path.join(args.out_dir, 'batch-%d.pkl' % (global_batch_ctr)))
+    return tar_file_ptr, global_batch_ctr, num_files_in_tar, tar_file_ctr
