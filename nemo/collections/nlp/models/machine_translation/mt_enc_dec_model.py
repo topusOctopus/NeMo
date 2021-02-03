@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import glob
 import itertools
 import json
 import os
@@ -452,8 +453,11 @@ class MTEncDecModel(EncDecNLPModel):
         tmp_f_src = tempfile.NamedTemporaryFile(delete=False, mode='w')
         tmp_f_tgt = tempfile.NamedTemporaryFile(delete=False, mode='w')
         tar_file_path = os.path.join(out_dir, 'batches.tokens.%d.%d.tar' % (tokens_in_batch, 1))
-        if os.path.isfile(tar_file_path):
-            logging.info(f'Tarred dataset {tar_file_path} already exists and will be used. Remove if reprocessing.')
+        metadata_path = os.path.join(out_dir, f'metadata.tokens.{tokens_in_batch}.json')
+        if os.path.isfile(tar_file_path) and os.path.isfile(metadata_path):
+            logging.info(
+                f'Tarred dataset {tar_file_path} and metadata file {metadata_path} exists and will be used. Remove if reprocessing.'
+            )
         else:
             tar_file_ptr = tarfile.open(tar_file_path, 'w')
             with open(src_fname, 'r') as f_src, open(tgt_fname) as f_tgt:
@@ -481,6 +485,7 @@ class MTEncDecModel(EncDecNLPModel):
                             tar_file_ctr=tar_file_ctr,
                             global_batch_ctr=global_batch_ctr,
                         )
+                        tar_file_ptrs.append(tar_file_ptr)
 
                         num_lines = 0
                         shard_num += 1
@@ -518,9 +523,11 @@ class MTEncDecModel(EncDecNLPModel):
                 global_batch_ctr -= num_files_in_tar
                 print('Dropping %d batches because of overflow' % (num_files_in_tar))
 
-            metadata_path = os.path.join(out_dir, 'metadata.json')
             json.dump({'num_batches': global_batch_ctr}, open(metadata_path, 'w'))
-            return tar_file_path, metadata_path
+        tar_file_paths = glob.glob(f'{out_dir}/batches.tokens.{tokens_in_batch}.*.tar')
+        logging.info(f'tar_file_paths: {tar_file_paths}')
+        logging.info(f'metadata_path: {metadata_path}')
+        return tar_file_paths, metadata_path
 
     @rank_zero_only
     def train_tokenizers(
