@@ -34,6 +34,7 @@ class MTEncDecModelConfig(EncDecNLPModelConfig):
     len_pen: float = 0.0
     max_generation_delta: int = 3
     label_smoothing: Optional[float] = 0.0
+    shared_tokenizer: Optional[bool] = True
 
 
 @dataclass

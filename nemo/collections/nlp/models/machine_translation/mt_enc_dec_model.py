@@ -518,7 +518,7 @@ class MTEncDecModel(EncDecNLPModel):
             return tar_file_path, metadata_path
 
     @rank_zero_only
-    def prepare_tokenizer(
+    def prepare_tokenizers(
         self,
         out_dir,
         src_fname,
