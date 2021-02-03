@@ -35,6 +35,7 @@ class MTEncDecModelConfig(EncDecNLPModelConfig):
     max_generation_delta: int = 3
     label_smoothing: Optional[float] = 0.0
     shared_tokenizer: Optional[bool] = True
+    preproc_out_dir: Optional[str] = None
 
 
 @dataclass

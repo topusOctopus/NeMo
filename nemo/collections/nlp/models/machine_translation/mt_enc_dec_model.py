@@ -73,14 +73,15 @@ class MTEncDecModel(EncDecNLPModel):
             or cfg.decoder_tokenizer.get('tokenizer_model') is None
         ):
             # train tokenizer model on training data
-            encoder_tokenizer_model, decoder_tokenizer_model = self.prepare_tokenizers(
-                out_dir=cfg.data_preproc.out_dir,
+            encoder_tokenizer_model, decoder_tokenizer_model = self.train_tokenizers(
+                out_dir=cfg.preproc_out_dir,
                 src_fname=cfg.train_ds.src_file_name,
                 tgt_fname=cfg.train_ds.tgt_file_name,
-                vocab_size=cfg.data_preproc.vocab_size,
-                shared_tokenizer=cfg.data_preproc.shared_tokenizer,
-                tokenizer_name=cfg.data_preproc.tokenizer_name,
-                bpe_dropout=cfg.data_preproc.bpe_dropout,
+                shared_tokenizer=cfg.shared_tokenizer,
+                encoder_vocab_size=cfg.encoder_tokenizer.vocab_size,
+                decoder_vocab_size=cfg.decoder_tokenizer.vocab_size,
+                encoder_tokenizer_name=cfg.encoder_tokenizer.tokenizer_name,
+                decoder_tokenizer_name=cfg.decoder_tokenizer.tokenizer_name,
             )
         else:
             encoder_tokenizer_model = cfg.encoder_tokenizer.tokenizer_model
@@ -518,15 +519,16 @@ class MTEncDecModel(EncDecNLPModel):
             return tar_file_path, metadata_path
 
     @rank_zero_only
-    def prepare_tokenizers(
+    def train_tokenizers(
         self,
         out_dir,
         src_fname,
         tgt_fname,
-        vocab_size,
         shared_tokenizer,
         encoder_tokenizer_name,
+        encoder_tokenizer_vocab_size,
         decoder_tokenizer_name,
+        decoder_tokenizer_vocab_size,
     ):
         # trains tokenizers if needed and
         if not os.path.exists(out_dir):
@@ -536,7 +538,9 @@ class MTEncDecModel(EncDecNLPModel):
             raise NotImplemented(f"Currently we only support yttm tokenizer.")
 
         if shared_tokenizer:
-            encoder_tokenizer_model = os.path.join(out_dir, 'shared_tokenizer.%d.BPE.model' % (vocab_size))
+            encoder_tokenizer_model = os.path.join(
+                out_dir, 'shared_tokenizer.%d.BPE.model' % (encoder_tokenizer_vocab_size)
+            )
             decoder_tokenizer_model = encoder_tokenizer_model
             if os.path.isfile(encoder_tokenizer_model):
                 logging.info(
@@ -548,27 +552,31 @@ class MTEncDecModel(EncDecNLPModel):
                 yttm.BPE.train(
                     data='/tmp/concat_dataset.txt',
                     vocab_size=vocab_size,
-                    model=os.path.join(out_dir, 'tokenizer.%d.BPE.model' % (vocab_size)),
+                    model=os.path.join(out_dir, 'tokenizer.%d.BPE.model' % (encoder_tokenizer_vocab_size)),
                 )
                 os.remove('/tmp/concat_dataset.txt')
         else:
-            encoder_tokenizer_model = os.path.join(out_dir, 'tokenizer.encoder.%d.BPE.model' % (vocab_size))
+            encoder_tokenizer_model = os.path.join(
+                out_dir, 'tokenizer.encoder.%d.BPE.model' % (encoder_tokenizer_vocab_size)
+            )
             if os.path.isfile(encoder_tokenizer_model):
                 logging.info(
                     f'Encoder tokenizer model {encoder_tokenizer_model} already exists. Remove file if training a new tokenizer model.'
                 )
             else:
                 logging.info(f'Encoder tokenizer model {encoder_tokenizer_model} not found. Training tokenizer model.')
-                yttm.BPE.train(data=src_fname, vocab_size=vocab_size, model=encoder_tokenizer_model)
+                yttm.BPE.train(data=src_fname, vocab_size=encoder_tokenizer_vocab_size, model=encoder_tokenizer_model)
 
-            decoder_tokenizer_model = os.path.join(out_dir, 'tokenizer.decoder.%d.BPE.model' % (vocab_size))
+            decoder_tokenizer_model = os.path.join(
+                out_dir, 'tokenizer.decoder.%d.BPE.model' % (decoder_tokenizer_vocab_size)
+            )
             if os.path.isfile(decoder_tokenizer_model):
                 logging.info(
                     f'Decoder tokenizer model {decoder_tokenizer_model} already exists. Remove file if training a new tokenizer model.'
                 )
             else:
                 logging.info(f'Decoder tokenizer model {decoder_tokenizer_model} not found. Training tokenizer model.')
-                yttm.BPE.train(data=src_fname, vocab_size=vocab_size, model=decoder_tokenizer_model)
+                yttm.BPE.train(data=src_fname, vocab_size=decoder_tokenizer_vocab_size, model=decoder_tokenizer_model)
 
         return encoder_tokenizer_model, decoder_tokenizer_model
 
