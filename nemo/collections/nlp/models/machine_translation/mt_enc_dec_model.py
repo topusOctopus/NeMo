@@ -82,7 +82,6 @@ class MTEncDecModel(EncDecNLPModel):
                 tokenizer_name=cfg.data_preproc.tokenizer_name,
                 bpe_dropout=cfg.data_preproc.bpe_dropout,
             )
-
         else:
             encoder_tokenizer_model = cfg.encoder_tokenizer.tokenizer_model
             decoder_tokenizer_model = cfg.decoder_tokenizer.tokenizer_model
@@ -100,12 +99,13 @@ class MTEncDecModel(EncDecNLPModel):
         # If using tarred dataset for training, automatically create it if needed
         if cfg.hasattr(('train_ds')):
             if cfg.train_ds.get('use_tarred_dataset'):
-                if (cfg.train_ds.get('tar_file_name') is None or cfg.train_ds.get('metadata_file_name') is None):
+                if cfg.train_ds.get('tar_file_name') is None or cfg.train_ds.get('metadata_file_name') is None:
                     # Preprocess data and cache for use during training
-                    logging.info(f"Creating tarred dataset for src {cfg.train_ds.get('src_file_name')} and tgt {cfg.train_ds.get('tgt_file_name')}")
+                    logging.info(
+                        f"Creating tarred dataset for src {cfg.train_ds.get('src_file_name')} and tgt {cfg.train_ds.get('tgt_file_name')}"
+                    )
                     self.train_tar_file, self.train_metadata_file = self.preprocess_dataset(
                         clean=cfg.train_ds.clean,
-                        dataset_name='train',
                         src_fname=cfg.train_ds.get('src_file_name'),
                         tgt_fname=cfg.train_ds.get('tgt_file_name'),
                         out_dir=cfg.train_ds.get('out_dir'),
@@ -116,11 +116,12 @@ class MTEncDecModel(EncDecNLPModel):
                         lines_per_dataset_fragment=cfg.train_ds.get('lines_per_dataset_fragment'),
                         num_batches_per_tarfile=cfg.train_ds.get('num_batches_per_tarfile'),
                     )
-                    logging.info(f"Tarred dataset created at {self.train_tar_file} and metadata created at {self.train_metadata_file}")
+                    logging.info(
+                        f"Tarred dataset created at {self.train_tar_file} and metadata created at {self.train_metadata_file}"
+                    )
                 else:
                     self.train_tar_file = cfg.train_ds.get('tar_file_name')
                     self.train_metadata_file = cfg.train_ds.get('metadata_file_name')
-
 
         super().__init__(cfg=cfg, trainer=trainer)
 
@@ -328,7 +329,7 @@ class MTEncDecModel(EncDecNLPModel):
 
     def _setup_dataloader_from_config(self, cfg: DictConfig):
         if cfg.get("load_from_tarred_dataset", False):
-        # tarred dataset only used for training data
+            # tarred dataset only used for training data
             logging.info('Loading from tarred dataset %s' % (self.train_tar_file))
             dataset = TarredTranslationDataset(
                 text_tar_filepaths=self.train_tar_file,
@@ -423,11 +424,10 @@ class MTEncDecModel(EncDecNLPModel):
         pass
 
     # TODO: add local or global rank 0 decorator
-    @rank_zero_only()
+    @rank_zero_only
     def preprocess_dataset(
         self,
         clean,
-        dataset_name,
         src_fname,
         tgt_fname,
         out_dir,
@@ -446,7 +446,7 @@ class MTEncDecModel(EncDecNLPModel):
         global_batch_ctr = 0
         tmp_f_src = tempfile.NamedTemporaryFile(delete=False, mode='w')
         tmp_f_tgt = tempfile.NamedTemporaryFile(delete=False, mode='w')
-        tar_file_path = os.path.join(out_dir, '%s.batches.tokens.%d.%d.tar' % (dataset_name, tokens_in_batch, 1))
+        tar_file_path = os.path.join(out_dir, '%s.batches.tokens.%d.%d.tar' % (tokens_in_batch, 1))
         if os.path.isfile(tar_file_path):
             logging.info(f'Tarred dataset {tar_file_path} already exists and will be used. Remove if reprocessing.')
         else:
@@ -513,11 +513,11 @@ class MTEncDecModel(EncDecNLPModel):
                 global_batch_ctr -= num_files_in_tar
                 print('Dropping %d batches because of overflow' % (num_files_in_tar))
 
-            metadata_path = os.path.join(out_dir, f'{dataset_name}.metadata.json')
-            json.dump({'num_batches': global_batch_ctr}, open(metadata_path), 'w'))
+            metadata_path = os.path.join(out_dir, '.metadata.json')
+            json.dump({'num_batches': global_batch_ctr}, open(metadata_path), 'w')
             return tar_file_path, metadata_path
 
-    @rank_zero_only()
+    @rank_zero_only
     def prepare_tokenizer(
         self,
         out_dir,
@@ -572,7 +572,7 @@ class MTEncDecModel(EncDecNLPModel):
 
         return encoder_tokenizer_model, decoder_tokenizer_model
 
-    @rank_zero_only()
+    @rank_zero_only
     def write_batches_to_tarfiles(
         self,
         out_dir,
