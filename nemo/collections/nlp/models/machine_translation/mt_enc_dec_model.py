@@ -78,8 +78,8 @@ class MTEncDecModel(EncDecNLPModel):
                 src_fname=cfg.train_ds.src_file_name,
                 tgt_fname=cfg.train_ds.tgt_file_name,
                 shared_tokenizer=cfg.shared_tokenizer,
-                encoder_vocab_size=cfg.encoder_tokenizer.vocab_size,
-                decoder_vocab_size=cfg.decoder_tokenizer.vocab_size,
+                encoder_tokenizer_vocab_size=cfg.encoder_tokenizer.vocab_size,
+                decoder_tokenizer_vocab_size=cfg.decoder_tokenizer.vocab_size,
                 encoder_tokenizer_name=cfg.encoder_tokenizer.tokenizer_name,
                 decoder_tokenizer_name=cfg.decoder_tokenizer.tokenizer_name,
             )
@@ -98,7 +98,7 @@ class MTEncDecModel(EncDecNLPModel):
         )
 
         # If using tarred dataset for training, automatically create it if needed
-        if cfg.hasattr(('train_ds')):
+        if hasattr(cfg, 'train_ds'):
             if cfg.train_ds.get('use_tarred_dataset'):
                 if cfg.train_ds.get('tar_file_name') is None or cfg.train_ds.get('metadata_file_name') is None:
                     # Preprocess data and cache for use during training
@@ -109,13 +109,14 @@ class MTEncDecModel(EncDecNLPModel):
                         clean=cfg.train_ds.clean,
                         src_fname=cfg.train_ds.get('src_file_name'),
                         tgt_fname=cfg.train_ds.get('tgt_file_name'),
-                        out_dir=cfg.train_ds.get('out_dir'),
+                        out_dir=cfg.get('preproc_out_dir'),
                         encoder_tokenizer=self.encoder_tokenizer,
                         decoder_tokenizer=self.decoder_tokenizer,
                         max_seq_length=cfg.train_ds.max_seq_length,
                         tokens_in_batch=cfg.train_ds.tokens_in_batch,
                         lines_per_dataset_fragment=cfg.train_ds.get('lines_per_dataset_fragment'),
                         num_batches_per_tarfile=cfg.train_ds.get('num_batches_per_tarfile'),
+                        min_seq_length=1,
                     )
                     logging.info(
                         f"Tarred dataset created at {self.train_tar_file} and metadata created at {self.train_metadata_file}"
@@ -440,6 +441,8 @@ class MTEncDecModel(EncDecNLPModel):
         lines_per_dataset_fragment,
         num_batches_per_tarfile,
     ):
+        if not os.path.exists(out_dir):
+            os.makedirs(out_dir, exist_ok=True)
         tar_file_ctr = 1
         num_files_in_tar = 0
         num_lines = 0
@@ -447,7 +450,7 @@ class MTEncDecModel(EncDecNLPModel):
         global_batch_ctr = 0
         tmp_f_src = tempfile.NamedTemporaryFile(delete=False, mode='w')
         tmp_f_tgt = tempfile.NamedTemporaryFile(delete=False, mode='w')
-        tar_file_path = os.path.join(out_dir, '%s.batches.tokens.%d.%d.tar' % (tokens_in_batch, 1))
+        tar_file_path = os.path.join(out_dir, 'batches.tokens.%d.%d.tar' % (tokens_in_batch, 1))
         if os.path.isfile(tar_file_path):
             logging.info(f'Tarred dataset {tar_file_path} already exists and will be used. Remove if reprocessing.')
         else:
@@ -514,8 +517,8 @@ class MTEncDecModel(EncDecNLPModel):
                 global_batch_ctr -= num_files_in_tar
                 print('Dropping %d batches because of overflow' % (num_files_in_tar))
 
-            metadata_path = os.path.join(out_dir, '.metadata.json')
-            json.dump({'num_batches': global_batch_ctr}, open(metadata_path), 'w')
+            metadata_path = os.path.join(out_dir, 'metadata.json')
+            json.dump({'num_batches': global_batch_ctr}, open(metadata_path), 'w+')
             return tar_file_path, metadata_path
 
     @rank_zero_only
@@ -551,8 +554,8 @@ class MTEncDecModel(EncDecNLPModel):
                 os.system('cat %s %s > %s' % (src_fname, tgt_fname, '/tmp/concat_dataset.txt'))
                 yttm.BPE.train(
                     data='/tmp/concat_dataset.txt',
-                    vocab_size=vocab_size,
-                    model=os.path.join(out_dir, 'tokenizer.%d.BPE.model' % (encoder_tokenizer_vocab_size)),
+                    vocab_size=encoder_tokenizer_vocab_size,
+                    model=os.path.join(out_dir, encoder_tokenizer_model),
                 )
                 os.remove('/tmp/concat_dataset.txt')
         else:
