@@ -441,8 +441,9 @@ class MTEncDecModel(EncDecNLPModel):
         lines_per_dataset_fragment,
         num_batches_per_tarfile,
     ):
-        if not os.path.exists(out_dir):
-            os.makedirs(out_dir, exist_ok=True)
+
+        os.makedirs(out_dir, exist_ok=True)
+
         tar_file_ctr = 1
         num_files_in_tar = 0
         num_lines = 0
@@ -518,7 +519,7 @@ class MTEncDecModel(EncDecNLPModel):
                 print('Dropping %d batches because of overflow' % (num_files_in_tar))
 
             metadata_path = os.path.join(out_dir, 'metadata.json')
-            json.dump({'num_batches': global_batch_ctr}, open(metadata_path), 'w+')
+            json.dump({'num_batches': global_batch_ctr}, open(metadata_path, 'w'))
             return tar_file_path, metadata_path
 
     @rank_zero_only
