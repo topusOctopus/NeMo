@@ -119,9 +119,10 @@ class MTEncDecModel(EncDecNLPModel):
                         num_batches_per_tarfile=cfg.train_ds.get('num_batches_per_tarfile'),
                         min_seq_length=1,
                     )
-                    logging.info(
-                        f"Tarred dataset created at {self.train_tar_files} and metadata created at {self.train_metadata_file}"
-                    )
+                    if self.global_rank == 0:
+                        logging.info(
+                            f"Tarred dataset created at {self.train_tar_files} and metadata created at {self.train_metadata_file}"
+                        )
                 else:
                     self.train_tar_files = cfg.train_ds.get('tar_file_names')
                     self.train_metadata_file = cfg.train_ds.get('metadata_file_name')
@@ -427,7 +428,6 @@ class MTEncDecModel(EncDecNLPModel):
         pass
 
     # TODO: add local or global rank 0 decorator
-    @rank_zero_only
     def preprocess_dataset(
         self,
         clean,
@@ -454,82 +454,82 @@ class MTEncDecModel(EncDecNLPModel):
         tmp_f_tgt = tempfile.NamedTemporaryFile(delete=False, mode='w')
         tar_file_path = os.path.join(out_dir, 'batches.tokens.%d.%d.tar' % (tokens_in_batch, 1))
         metadata_path = os.path.join(out_dir, f'metadata.tokens.{tokens_in_batch}.json')
-        if os.path.isfile(tar_file_path) and os.path.isfile(metadata_path):
-            logging.info(
-                f'Tarred dataset {tar_file_path} and metadata file {metadata_path} exists and will be used. Remove if reprocessing.'
-            )
-        else:
-            tar_file_ptr = tarfile.open(tar_file_path, 'w')
-            with open(src_fname, 'r') as f_src, open(tgt_fname) as f_tgt:
-                for src_line, tgt_line in zip(f_src, f_tgt):
-                    tmp_f_src.write(src_line)
-                    tmp_f_tgt.write(tgt_line)
-                    num_lines += 1
+        if self.global_rank == 0:
+            if os.path.isfile(tar_file_path) and os.path.isfile(metadata_path):
+                logging.info(
+                    f'Tarred dataset {tar_file_path} and metadata file {metadata_path} exists and will be used. Remove if reprocessing.'
+                )
+            else:
+                tar_file_ptr = tarfile.open(tar_file_path, 'w')
+                with open(src_fname, 'r') as f_src, open(tgt_fname) as f_tgt:
+                    for src_line, tgt_line in zip(f_src, f_tgt):
+                        tmp_f_src.write(src_line)
+                        tmp_f_tgt.write(tgt_line)
+                        num_lines += 1
 
-                    if num_lines == lines_per_dataset_fragment:
-                        tmp_f_src.close()
-                        tmp_f_tgt.close()
-                        (
-                            tar_file_ptr,
-                            global_batch_ctr,
-                            num_files_in_tar,
-                            tar_file_ctr,
-                        ) = self.write_batches_to_tarfiles(
-                            src_fname=tmp_f_src.name,
-                            tgt_fname=tmp_f_tgt.name,
-                            num_tokens=tokens_in_batch,
-                            encoder_tokenizer=encoder_tokenizer,
-                            decoder_tokenizer=decoder_tokenizer,
-                            num_files_in_tar=num_files_in_tar,
-                            tar_file_ptr=tar_file_ptr,
-                            tar_file_ctr=tar_file_ctr,
-                            global_batch_ctr=global_batch_ctr,
-                        )
-                        tar_file_ptrs.append(tar_file_ptr)
+                        if num_lines == lines_per_dataset_fragment:
+                            tmp_f_src.close()
+                            tmp_f_tgt.close()
+                            (
+                                tar_file_ptr,
+                                global_batch_ctr,
+                                num_files_in_tar,
+                                tar_file_ctr,
+                            ) = self.write_batches_to_tarfiles(
+                                src_fname=tmp_f_src.name,
+                                tgt_fname=tmp_f_tgt.name,
+                                num_tokens=tokens_in_batch,
+                                encoder_tokenizer=encoder_tokenizer,
+                                decoder_tokenizer=decoder_tokenizer,
+                                num_files_in_tar=num_files_in_tar,
+                                tar_file_ptr=tar_file_ptr,
+                                tar_file_ctr=tar_file_ctr,
+                                global_batch_ctr=global_batch_ctr,
+                            )
+                            tar_file_ptrs.append(tar_file_ptr)
 
-                        num_lines = 0
-                        shard_num += 1
+                            num_lines = 0
+                            shard_num += 1
 
-                        os.remove(tmp_f_src.name)
-                        os.remove(tmp_f_tgt.name)
+                            os.remove(tmp_f_src.name)
+                            os.remove(tmp_f_tgt.name)
 
-                        tmp_f_src = tempfile.NamedTemporaryFile(delete=False, mode='w')
-                        tmp_f_tgt = tempfile.NamedTemporaryFile(delete=False, mode='w')
+                            tmp_f_src = tempfile.NamedTemporaryFile(delete=False, mode='w')
+                            tmp_f_tgt = tempfile.NamedTemporaryFile(delete=False, mode='w')
 
-            tmp_f_src.close()
-            tmp_f_tgt.close()
-            tar_file_ptr, global_batch_ctr, num_files_in_tar, tar_file_ctr = self.write_batches_to_tarfiles(
-                out_dir=out_dir,
-                num_batches_per_tarfile=num_batches_per_tarfile,
-                clean=clean,
-                max_seq_length=max_seq_length,
-                min_seq_length=min_seq_length,
-                src_fname=tmp_f_src.name,
-                tgt_fname=tmp_f_tgt.name,
-                num_tokens=tokens_in_batch,
-                encoder_tokenizer=encoder_tokenizer,
-                decoder_tokenizer=decoder_tokenizer,
-                num_files_in_tar=num_files_in_tar,
-                tar_file_ptr=tar_file_ptr,
-                tar_file_ctr=tar_file_ctr,
-                global_batch_ctr=global_batch_ctr,
-            )
-            tar_file_ptr.close()
-            os.remove(tmp_f_src.name)
-            os.remove(tmp_f_tgt.name)
+                tmp_f_src.close()
+                tmp_f_tgt.close()
+                tar_file_ptr, global_batch_ctr, num_files_in_tar, tar_file_ctr = self.write_batches_to_tarfiles(
+                    out_dir=out_dir,
+                    num_batches_per_tarfile=num_batches_per_tarfile,
+                    clean=clean,
+                    max_seq_length=max_seq_length,
+                    min_seq_length=min_seq_length,
+                    src_fname=tmp_f_src.name,
+                    tgt_fname=tmp_f_tgt.name,
+                    num_tokens=tokens_in_batch,
+                    encoder_tokenizer=encoder_tokenizer,
+                    decoder_tokenizer=decoder_tokenizer,
+                    num_files_in_tar=num_files_in_tar,
+                    tar_file_ptr=tar_file_ptr,
+                    tar_file_ctr=tar_file_ctr,
+                    global_batch_ctr=global_batch_ctr,
+                )
+                tar_file_ptr.close()
+                os.remove(tmp_f_src.name)
+                os.remove(tmp_f_tgt.name)
 
-            if num_files_in_tar != num_batches_per_tarfile:
-                os.remove(os.path.join(out_dir, 'batches.tokens.%d.%d.tar' % (tokens_in_batch, tar_file_ctr)))
-                global_batch_ctr -= num_files_in_tar
-                print('Dropping %d batches because of overflow' % (num_files_in_tar))
+                if num_files_in_tar != num_batches_per_tarfile:
+                    os.remove(os.path.join(out_dir, 'batches.tokens.%d.%d.tar' % (tokens_in_batch, tar_file_ctr)))
+                    global_batch_ctr -= num_files_in_tar
+                    print('Dropping %d batches because of overflow' % (num_files_in_tar))
 
-            json.dump({'num_batches': global_batch_ctr}, open(metadata_path, 'w'))
+                json.dump({'num_batches': global_batch_ctr}, open(metadata_path, 'w'))
         tar_file_paths = glob.glob(f'{out_dir}/batches.tokens.{tokens_in_batch}.*.tar')
         logging.info(f'tar_file_paths: {tar_file_paths}')
         logging.info(f'metadata_path: {metadata_path}')
         return tar_file_paths, metadata_path
 
-    @rank_zero_only
     def train_tokenizers(
         self,
         out_dir,
@@ -541,9 +541,7 @@ class MTEncDecModel(EncDecNLPModel):
         decoder_tokenizer_name,
         decoder_tokenizer_vocab_size,
     ):
-        # trains tokenizers if needed and
-        if not os.path.exists(out_dir):
-            os.mkdir(out_dir)
+        os.makedirs(out_dir, exist_ok=True)
 
         if encoder_tokenizer_name != 'yttm' or decoder_tokenizer_name != 'yttm':
             raise NotImplemented(f"Currently we only support yttm tokenizer.")
@@ -553,45 +551,57 @@ class MTEncDecModel(EncDecNLPModel):
                 out_dir, 'shared_tokenizer.%d.BPE.model' % (encoder_tokenizer_vocab_size)
             )
             decoder_tokenizer_model = encoder_tokenizer_model
-            if os.path.isfile(encoder_tokenizer_model):
-                logging.info(
-                    f'Shared tokenizer model {encoder_tokenizer_model} already exists. Remove file if training a new tokenizer model.'
-                )
-            else:
-                logging.info(f'Shared tokenizer model {encoder_tokenizer_model} not found. Training tokenizer model.')
-                os.system('cat %s %s > %s' % (src_fname, tgt_fname, '/tmp/concat_dataset.txt'))
-                yttm.BPE.train(
-                    data='/tmp/concat_dataset.txt',
-                    vocab_size=encoder_tokenizer_vocab_size,
-                    model=os.path.join(out_dir, encoder_tokenizer_model),
-                )
-                os.remove('/tmp/concat_dataset.txt')
+            if self.global_rank == 0:
+                if os.path.isfile(encoder_tokenizer_model):
+                    logging.info(
+                        f'Shared tokenizer model {encoder_tokenizer_model} already exists. Remove file if training a new tokenizer model.'
+                    )
+                else:
+                    logging.info(
+                        f'Shared tokenizer model {encoder_tokenizer_model} not found. Training tokenizer model.'
+                    )
+                    os.system('cat %s %s > %s' % (src_fname, tgt_fname, '/tmp/concat_dataset.txt'))
+                    yttm.BPE.train(
+                        data='/tmp/concat_dataset.txt',
+                        vocab_size=encoder_tokenizer_vocab_size,
+                        model=os.path.join(out_dir, encoder_tokenizer_model),
+                    )
+                    os.remove('/tmp/concat_dataset.txt')
         else:
             encoder_tokenizer_model = os.path.join(
                 out_dir, 'tokenizer.encoder.%d.BPE.model' % (encoder_tokenizer_vocab_size)
             )
-            if os.path.isfile(encoder_tokenizer_model):
-                logging.info(
-                    f'Encoder tokenizer model {encoder_tokenizer_model} already exists. Remove file if training a new tokenizer model.'
-                )
-            else:
-                logging.info(f'Encoder tokenizer model {encoder_tokenizer_model} not found. Training tokenizer model.')
-                yttm.BPE.train(data=src_fname, vocab_size=encoder_tokenizer_vocab_size, model=encoder_tokenizer_model)
+            if self.global_rank == 0:
+                if os.path.isfile(encoder_tokenizer_model):
+                    logging.info(
+                        f'Encoder tokenizer model {encoder_tokenizer_model} already exists. Remove file if training a new tokenizer model.'
+                    )
+                else:
+                    logging.info(
+                        f'Encoder tokenizer model {encoder_tokenizer_model} not found. Training tokenizer model.'
+                    )
+                    yttm.BPE.train(
+                        data=src_fname, vocab_size=encoder_tokenizer_vocab_size, model=encoder_tokenizer_model
+                    )
 
             decoder_tokenizer_model = os.path.join(
                 out_dir, 'tokenizer.decoder.%d.BPE.model' % (decoder_tokenizer_vocab_size)
             )
-            if os.path.isfile(decoder_tokenizer_model):
-                logging.info(
-                    f'Decoder tokenizer model {decoder_tokenizer_model} already exists. Remove file if training a new tokenizer model.'
-                )
-            else:
-                logging.info(f'Decoder tokenizer model {decoder_tokenizer_model} not found. Training tokenizer model.')
-                yttm.BPE.train(data=src_fname, vocab_size=decoder_tokenizer_vocab_size, model=decoder_tokenizer_model)
+            if self.global_rank == 0:
+                if os.path.isfile(decoder_tokenizer_model):
+                    logging.info(
+                        f'Decoder tokenizer model {decoder_tokenizer_model} already exists. Remove file if training a new tokenizer model.'
+                    )
+                else:
+                    logging.info(
+                        f'Decoder tokenizer model {decoder_tokenizer_model} not found. Training tokenizer model.'
+                    )
+                    yttm.BPE.train(
+                        data=src_fname, vocab_size=decoder_tokenizer_vocab_size, model=decoder_tokenizer_model
+                    )
 
         return encoder_tokenizer_model, decoder_tokenizer_model
 
-    @rank_zero_only
     def write_batches_to_tarfiles(
         self,
         out_dir,
