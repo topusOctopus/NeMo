@@ -101,12 +101,12 @@ class MTEncDecModel(EncDecNLPModel):
         # If using tarred dataset for training, automatically create it if needed
         if hasattr(cfg, 'train_ds'):
             if cfg.train_ds.get('use_tarred_dataset'):
-                if cfg.train_ds.get('tar_file_name') is None or cfg.train_ds.get('metadata_file_name') is None:
+                if cfg.train_ds.get('tar_file_names') is None or cfg.train_ds.get('metadata_file_name') is None:
                     # Preprocess data and cache for use during training
                     logging.info(
                         f"Creating tarred dataset for src {cfg.train_ds.get('src_file_name')} and tgt {cfg.train_ds.get('tgt_file_name')}"
                     )
-                    self.train_tar_file, self.train_metadata_file = self.preprocess_dataset(
+                    self.train_tar_files, self.train_metadata_file = self.preprocess_dataset(
                         clean=cfg.train_ds.clean,
                         src_fname=cfg.train_ds.get('src_file_name'),
                         tgt_fname=cfg.train_ds.get('tgt_file_name'),
@@ -120,10 +120,10 @@ class MTEncDecModel(EncDecNLPModel):
                         min_seq_length=1,
                     )
                     logging.info(
-                        f"Tarred dataset created at {self.train_tar_file} and metadata created at {self.train_metadata_file}"
+                        f"Tarred dataset created at {self.train_tar_files} and metadata created at {self.train_metadata_file}"
                     )
                 else:
-                    self.train_tar_file = cfg.train_ds.get('tar_file_name')
+                    self.train_tar_files = cfg.train_ds.get('tar_file_names')
                     self.train_metadata_file = cfg.train_ds.get('metadata_file_name')
 
         super().__init__(cfg=cfg, trainer=trainer)
