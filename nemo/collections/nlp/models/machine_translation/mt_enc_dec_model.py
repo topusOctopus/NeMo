@@ -121,7 +121,7 @@ class MTEncDecModel(EncDecNLPModel):
                     )
                     if self.global_rank == 0:
                         logging.info(
-                            f"Tarred dataset created at {self.train_tar_files} and metadata created at {self.train_metadata_file}"
+                            f"Tarred dataset created at {cfg.get('preproc_out_dir')} and metadata created at {self.train_metadata_file}"
                         )
                 else:
                     self.train_tar_files = cfg.train_ds.get('tar_file_names')
@@ -476,6 +476,11 @@ class MTEncDecModel(EncDecNLPModel):
                                 num_files_in_tar,
                                 tar_file_ctr,
                             ) = self.write_batches_to_tarfiles(
+                                out_dir=out_dir,
+                                num_batches_per_tarfile=num_batches_per_tarfile,
+                                clean=clean,
+                                max_seq_length=max_seq_length,
+                                min_seq_length=min_seq_length,
                                 src_fname=tmp_f_src.name,
                                 tgt_fname=tmp_f_tgt.name,
                                 num_tokens=tokens_in_batch,
@@ -486,7 +491,6 @@ class MTEncDecModel(EncDecNLPModel):
                                 tar_file_ctr=tar_file_ctr,
                                 global_batch_ctr=global_batch_ctr,
                             )
-                            tar_file_ptrs.append(tar_file_ptr)
 
                             num_lines = 0
                             shard_num += 1
@@ -526,8 +530,6 @@ class MTEncDecModel(EncDecNLPModel):
 
                 json.dump({'num_batches': global_batch_ctr}, open(metadata_path, 'w'))
         tar_file_paths = glob.glob(f'{out_dir}/batches.tokens.{tokens_in_batch}.*.tar')
-        logging.info(f'tar_file_paths: {tar_file_paths}')
-        logging.info(f'metadata_path: {metadata_path}')
         return tar_file_paths, metadata_path
 
     def train_tokenizers(
