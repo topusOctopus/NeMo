@@ -165,10 +165,10 @@ class WER(Metric):
             else:
                 raise NotImplementedError("Implement me if you need non-CTC decode on predictions")
 
-        if self.log_prediction:
-            logging.info(f"\n")
-            logging.info(f"reference:{references[0]}")
-            logging.info(f"predicted:{hypotheses[0]}")
+        #if self.log_prediction:
+         #   logging.info(f"\n")
+         #   logging.info(f"reference:{references[0]}")
+         #   logging.info(f"predicted:{hypotheses[0]}")
 
         for h, r in zip(hypotheses, references):
             if self.use_cer:
