@@ -110,7 +110,7 @@ class _AudioTextDataset(Dataset):
         return {
             'audio_signal': NeuralType(
                 ('B', 'T'),
-                AudioSignal(freq=self._sample_rate)  # TODO: self._sample_rate is not defined anywhere
+                AudioSignal(freq=self.featurizer.sample_rate)  # TODO: self._sample_rate is not defined anywhere
                 if self is not None and hasattr(self, '_sample_rate')
                 else AudioSignal(),
             ),
@@ -234,7 +234,7 @@ class AudioToCharDataset(_AudioTextDataset):
         return {
             'audio_signal': NeuralType(
                 ('B', 'T'),
-                AudioSignal(freq=self._sample_rate)
+                AudioSignal(freq=self.featurizer.sample_rate)
                 if self is not None and hasattr(self, '_sample_rate')
                 else AudioSignal(),
             ),
@@ -321,7 +321,7 @@ class AudioToCharWithDursDataset(AudioToCharDataset):
         return {
             'audio': NeuralType(
                 ('B', 'T'),
-                AudioSignal(freq=self._sample_rate)
+                AudioSignal(freq=self.featurizer.sample_rate)
                 if self is not None and hasattr(self, '_sample_rate')
                 else AudioSignal(),
             ),
@@ -448,7 +448,7 @@ class AudioToBPEDataset(_AudioTextDataset):
         return {
             'audio_signal': NeuralType(
                 ('B', 'T'),
-                AudioSignal(freq=self._sample_rate)
+                AudioSignal(freq=self.featurizer.sample_rate)
                 if self is not None and hasattr(self, '_sample_rate')
                 else AudioSignal(),
             ),
